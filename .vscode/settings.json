@@ -1,0 +1,11 @@
+{
+  "deno.enable": true,
+  "deno.enablePaths": ["./ai"],
+  "deno.importMap": "./deno.json",
+  "deno.config": "./deno.json",
+  "[typescript]": {
+    "editor.defaultFormatter": "denoland.vscode-deno"
+  },
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true
+}

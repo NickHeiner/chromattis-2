@@ -1,4 +1,5 @@
 {
+  "nodeModulesDir": "auto",
   "tasks": {
     "ai": "deno check ai/index.ts && deno run -A ai/index.ts",
     "ai:check": "deno check ai/index.ts",
