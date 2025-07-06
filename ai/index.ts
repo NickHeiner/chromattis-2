@@ -1,4 +1,4 @@
-import "openai/shims/2024-05-01-beta";
+import "dotenv/config"; // Load environment variables from .env
 import OpenAI from "openai";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
@@ -9,22 +9,19 @@ import { LEVELS } from "../lib/game/levels";
  * Build the system prompt delivered to the model.
  * We intentionally do NOT describe the Chromattis mechanics – the agent must infer them.
  */
-function buildSystemPrompt(level: number | string): string {
-  return `You are playing the puzzle game Chromattis. Your goal is to successfully solve the specified level as efficiently as possible. Report when you have either found a solution or determined the puzzle is unsolvable. Level: ${level}.`;
+function buildSystemPrompt(): string {
+  return `
+    You are playing a puzzle game. You have tools available to inspect and mutate the current state. 
+    Use the tools to figure out how the puzzle works, then solve it. The puzzle is considered solved when all tiles are the same number.
+
+    Your goal is to solve it in as few moves as possible.`;
 }
 
-/**
- * Build the user prompt delivered to the model.
- */
-function buildUserPrompt(level: number | string): string {
-  return `Solve Chromattis level ${level}.`;
-}
-
-const TOOL_DEFINITIONS: any[] = [
+const TOOL_DEFINITIONS = [
   {
     type: "function",
     name: "get_state",
-    description: "Return the current Chromattis game state as JSON.",
+    description: "Return the current game state as JSON.",
     parameters: {
       type: "object",
       properties: {},
@@ -35,7 +32,7 @@ const TOOL_DEFINITIONS: any[] = [
   {
     type: "function",
     name: "tap_tile",
-    description: "Tap a tile on the board to cycle its target tiles.",
+    description: "Tap a tile on the board",
     parameters: {
       type: "object",
       properties: {
@@ -57,8 +54,8 @@ async function submitBackgroundJob(level: number | string): Promise<string> {
   const response = await openai.responses.create({
     model: "o3",
     mode: "background",
-    instructions: buildSystemPrompt(level),
-    input: buildUserPrompt(level),
+    instructions: buildSystemPrompt(),
+    input: "Solve the puzzle.",
     tools: [
       {
         type: "code_interpreter",

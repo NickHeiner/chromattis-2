@@ -6,7 +6,9 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start",
+    "solve:level1": "pnpm run build:ai && node dist/ai/ai/index.js --level 1",
+    "build:ai": "tsc ai/index.ts --outDir dist/ai --module commonjs --target es2020 --esModuleInterop --resolveJsonModule"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -37,11 +39,13 @@
     "@radix-ui/react-toggle": "1.1.1",
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
+    "@types/yargs": "^17.0.33",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
     "date-fns": "4.1.0",
+    "dotenv": "^17.0.1",
     "embla-carousel-react": "8.5.1",
     "immer": "latest",
     "input-otp": "1.4.1",
@@ -49,6 +53,7 @@
     "lucide-react": "^0.454.0",
     "next": "15.2.4",
     "next-themes": "^0.4.4",
+    "openai": "^5.8.2",
     "react": "^19",
     "react-day-picker": "8.10.1",
     "react-dom": "^19",
@@ -60,6 +65,7 @@
     "tailwindcss-animate": "^1.0.7",
     "use-sync-external-store": "latest",
     "vaul": "^0.9.6",
+    "yargs": "^18.0.0",
     "zod": "^3.24.1",
     "zustand": "latest"
   },
@@ -69,6 +75,7 @@
     "@types/react-dom": "^19",
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",
+    "ts-node": "^10",
     "typescript": "^5"
   }
 }
