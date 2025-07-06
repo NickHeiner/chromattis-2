@@ -18,8 +18,8 @@ await loadEnv({ export: true });
 //--------------------------------------------------------------------------//
 
 import { parse } from "@std/flags";
-import { z } from "npm:zod@^3.23.8";
-import { tool, Agent, run } from "npm:@openai/agents@^0.1.0";
+import { z } from "zod";
+import { Agent, run, tool } from "@openai/agents";
 import { ChromattisGameEngine } from "../lib/game/engine.ts";
 import { LEVELS } from "../lib/game/levels.ts";
 
@@ -57,7 +57,7 @@ async function main() {
       `Usage: deno run -A ai/index.ts --level <number>\n\n` +
         "Options:\n" +
         "  --level     Chromattis level number to solve\n" +
-        "  -h, --help  Show this help message\n"
+        "  -h, --help  Show this help message\n",
     );
     if (!level) Deno.exit(1);
   }
@@ -129,7 +129,7 @@ async function main() {
   if (stream.usage) {
     const { input_tokens, output_tokens, total_tokens } = stream.usage;
     console.log(
-      `Token usage – input: ${input_tokens}, output: ${output_tokens}, total: ${total_tokens}`
+      `Token usage – input: ${input_tokens}, output: ${output_tokens}, total: ${total_tokens}`,
     );
   }
 }

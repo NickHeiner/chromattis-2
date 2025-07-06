@@ -7,11 +7,12 @@
   },
   "imports": {
     "@std/dotenv": "jsr:@std/dotenv@^0.224.0",
-    "@std/flags": "jsr:@std/flags@^0.224.0"
+    "@std/flags": "jsr:@std/flags@^0.224.0",
+    "zod": "npm:zod@^3.23.8",
+    "@openai/agents": "npm:@openai/agents@^0.0.10"
   },
   "compilerOptions": {
     "strict": true,
-    "allowJs": false,
     "checkJs": false
   }
 }
