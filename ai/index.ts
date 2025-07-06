@@ -111,17 +111,31 @@ async function pollJob(
   while (true) {
     const job: any = await openai.responses.retrieve(jobId);
 
+    // Detailed logging
+    console.log("\n\n=== Job update ===");
+    console.dir(
+      { status: job.status, last_error: job.error ?? undefined },
+      {
+        depth: null,
+      }
+    );
+
     // heartbeat
     Deno.stdout.writeSync(new TextEncoder().encode("."));
 
     if (job.status === "requires_action") {
       const action = job.required_action as any;
       if (action?.type === "submit_tool_outputs") {
+        console.log("\nTool calls received from model:");
+        console.dir(action.tool_calls, { depth: null });
+
         const toolOutputs = action.tool_calls.map((call: any) => {
           const { id, name, arguments: args } = call;
 
           if (name === "get_state") {
-            return { tool_call_id: id, output: JSON.stringify(engine.state) };
+            const output = JSON.stringify(engine.state);
+            console.log(`get_state → ${output}`);
+            return { tool_call_id: id, output };
           }
 
           if (name === "tap_tile") {
@@ -132,7 +146,9 @@ async function pollJob(
               parsed = { tileId: NaN } as any;
             }
             const newState = engine.clickTile(parsed.tileId);
-            return { tool_call_id: id, output: JSON.stringify(newState) };
+            const output = JSON.stringify(newState);
+            console.log(`tap_tile(${parsed.tileId}) → ${output}`);
+            return { tool_call_id: id, output };
           }
 
           // Fallback for unknown tools
@@ -140,6 +156,9 @@ async function pollJob(
         });
 
         // Method not yet in type defs – using as any
+        console.log("Submitting tool outputs to OpenAI:");
+        console.dir(toolOutputs, { depth: null });
+
         await (openai.responses as any).submit_tool_outputs(jobId, {
           tool_outputs: toolOutputs,
         });
