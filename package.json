@@ -7,10 +7,12 @@
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start",
-    "solve": "deno run -A ai/index.ts"
+    "solve": "deno run -A ai/index.ts",
+    "solve:typecheck": "deno check ai/index.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
+    "@openai/agents": "^0.0.10",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
     "@radix-ui/react-aspect-ratio": "1.1.1",
@@ -75,7 +77,6 @@
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",
     "ts-node": "^10",
-    "typescript": "^5",
-    "denonext": "^1.0.0"
+    "typescript": "^5"
   }
 }

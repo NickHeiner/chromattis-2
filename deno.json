@@ -1,0 +1,16 @@
+{
+  "tasks": {
+    "ai": "deno check ai/index.ts && deno run -A ai/index.ts",
+    "ai:check": "deno check ai/index.ts",
+    "ai:run": "deno run --check -A ai/index.ts"
+  },
+  "imports": {
+    "@std/dotenv": "jsr:@std/dotenv@^0.224.0",
+    "@std/flags": "jsr:@std/flags@^0.224.0"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "allowJs": false,
+    "checkJs": false
+  }
+}

@@ -1,242 +1,135 @@
 // deno-lint-ignore-file no-explicit-any
-// @ts-nocheck
-// Load environment variables from a local .env file if present
-// @ts-ignore – Remote Deno std import not resolvable by tsc without plugin
-import { load as loadEnv } from "https://deno.land/std@0.224.0/dotenv/mod.ts";
+// ---------------------------------------------------------------------------
+// Chromattis solver powered by the OpenAI Agents SDK
+// ---------------------------------------------------------------------------
 
-// Ensure variables from a local .env file are available via Deno.env
+// NOTE: This file was fully refactored to use the high-level `@openai/agents`
+// SDK (https://openai.github.io/openai-agents-js/) instead of the low-level
+// background-job polling previously implemented with the beta `responses` API.
+// The CLI behaviour is unchanged: pass `--level <number>` to choose the puzzle
+// level you want the agent to solve.
+
+// Load environment variables from a local .env file if present
+import { load as loadEnv } from "@std/dotenv";
 await loadEnv({ export: true });
 
-// ---------------------------------------------------------------------------
-// Environment – retrieve once and fail fast if required variables are missing
-// ---------------------------------------------------------------------------
+//--------------------------------------------------------------------------//
+// Imports
+//--------------------------------------------------------------------------//
 
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-
-if (!OPENAI_API_KEY) {
-  throw new Error(
-    "Missing OPENAI_API_KEY environment variable. Add it to your .env file or export it in your shell."
-  );
-}
-
-// Helper to build the OpenAI client with the validated API key
-function createOpenAIClient() {
-  return new OpenAI({ apiKey: OPENAI_API_KEY });
-}
-
-// @ts-ignore – Deno npm specifier
-import OpenAI from "npm:openai";
-// @ts-ignore – Remote Deno std import not resolvable by tsc without plugin
-import { parse } from "https://deno.land/std@0.224.0/flags/mod.ts";
+import { parse } from "@std/flags";
+import { z } from "npm:zod@^3.23.8";
+import { tool, Agent, run } from "npm:@openai/agents@^0.1.0";
 import { ChromattisGameEngine } from "../lib/game/engine.ts";
 import { LEVELS } from "../lib/game/levels.ts";
 
-/**
- * Build the system prompt delivered to the model.
- * We intentionally do NOT describe the Chromattis mechanics – the agent must infer them.
- */
+//--------------------------------------------------------------------------//
+// Helpers
+//--------------------------------------------------------------------------//
+
 function buildSystemPrompt(): string {
   return `
     You are playing a puzzle game. You have tools available to inspect and mutate the current state. 
     Use the tools to figure out how the puzzle works, then solve it. The puzzle is considered solved when all tiles are the same number.
 
-    Your goal is to solve it in as few moves as possible.`;
+    Your goal is to solve it in as few moves as possible.`.trim();
 }
 
-const TOOL_DEFINITIONS = [
-  {
-    type: "function",
-    name: "get_state",
-    description: "Return the current game state as JSON.",
-    parameters: {
-      type: "object",
-      properties: {},
-      required: [],
-      additionalProperties: false,
-    },
-    strict: true,
-  },
-  {
-    type: "function",
-    name: "tap_tile",
-    description: "Tap a tile on the board",
-    parameters: {
-      type: "object",
-      properties: {
-        tileId: { type: "integer", description: "ID of tile to tap" },
-      },
-      required: ["tileId"],
-      additionalProperties: false,
-    },
-    strict: true,
-  },
-] as const;
+//--------------------------------------------------------------------------//
+// Main CLI entrypoint
+//--------------------------------------------------------------------------//
 
-/**
- * Submit a background job to OpenAI that attempts to solve the requested level.
- * Returns the newly-created job id.
- */
-async function submitBackgroundJob(): Promise<string> {
-  const openai = createOpenAIClient();
-
-  const response = await openai.responses.create({
-    model: "o3",
-    instructions: buildSystemPrompt(),
-    input: "Solve the puzzle.",
-    tools: [
-      {
-        type: "code_interpreter",
-        container: { type: "auto" },
-      },
-      ...TOOL_DEFINITIONS,
-    ],
-    reasoning: { effort: "high" },
-  } as any);
-
-  // The SDK returns the job meta when mode === "background" which includes an id
-  return (response as any).id as string;
-}
-
-/**
- * Poll the given job id until it is no longer running, then print the outcome and token usage.
- */
-async function pollJob(
-  jobId: string,
-  engine: ChromattisGameEngine
-): Promise<void> {
-  const openai = createOpenAIClient();
-
-  Deno.stdout.writeSync(new TextEncoder().encode(`Polling job ${jobId}`));
-
-  while (true) {
-    const job: any = await openai.responses.retrieve(jobId);
-
-    // Detailed logging
-    console.log("\n\n=== Job update ===");
-    console.dir(
-      { status: job.status, last_error: job.error ?? undefined },
-      {
-        depth: null,
-      }
-    );
-
-    // heartbeat
-    Deno.stdout.writeSync(new TextEncoder().encode("."));
-
-    if (job.status === "requires_action") {
-      const action = job.required_action as any;
-      if (action?.type === "submit_tool_outputs") {
-        console.log("\nTool calls received from model:");
-        console.dir(action.tool_calls, { depth: null });
-
-        const toolOutputs = action.tool_calls.map((call: any) => {
-          const { id, name, arguments: args } = call;
-
-          if (name === "get_state") {
-            const output = JSON.stringify(engine.state);
-            console.log(`get_state → ${output}`);
-            return { tool_call_id: id, output };
-          }
-
-          if (name === "tap_tile") {
-            let parsed: { tileId: number };
-            try {
-              parsed = JSON.parse(args);
-            } catch {
-              parsed = { tileId: NaN } as any;
-            }
-            const newState = engine.clickTile(parsed.tileId);
-            const output = JSON.stringify(newState);
-            console.log(`tap_tile(${parsed.tileId}) → ${output}`);
-            return { tool_call_id: id, output };
-          }
-
-          // Fallback for unknown tools
-          return { tool_call_id: id, output: "Unknown tool call" };
-        });
-
-        // Method not yet in type defs – using as any
-        console.log("Submitting tool outputs to OpenAI:");
-        console.dir(toolOutputs, { depth: null });
-
-        await (openai.responses as any).submit_tool_outputs(jobId, {
-          tool_outputs: toolOutputs,
-        });
-        continue; // Immediately continue polling after submitting outputs
-      }
-    }
-
-    if (job.status !== "in_progress" && job.status !== "queued") {
-      console.log("\n\n=== Job finished ===");
-      console.log(`Status: ${job.status}`);
-
-      if (job.status === "completed") {
-        if (job.response) {
-          console.log("Model response:\n");
-          console.log(job.response);
-          console.log("\n");
-        }
-
-        if (job.usage) {
-          const { input_tokens, output_tokens, total_tokens } = job.usage;
-          console.log(
-            `Token usage – input: ${input_tokens}, output: ${output_tokens}, total: ${total_tokens}`
-          );
-        }
-      } else {
-        console.log("The job did not complete successfully.");
-        if (job.error) {
-          console.error("Error from OpenAI:", job.error);
-        }
-      }
-      break;
-    }
-
-    await new Promise((res) => setTimeout(res, 2000));
-  }
+if (import.meta.main) {
+  await main();
 }
 
 async function main() {
   const flags = parse(Deno.args, {
-    string: ["job-id"],
+    string: ["level"],
     boolean: ["help"],
     alias: { h: "help" },
   });
 
   const level = flags.level ? Number(flags.level) : undefined;
-  const jobId = flags["job-id"] as string | undefined;
 
-  if (flags.help || (!level && !jobId)) {
+  if (flags.help || !level) {
     console.log(
-      `Usage: deno run -A ai/index.ts [--level <number>] [--job-id <id>]\n\n` +
+      `Usage: deno run -A ai/index.ts --level <number>\n\n` +
         "Options:\n" +
         "  --level     Chromattis level number to solve\n" +
-        "  --job-id    Listen to an existing background job instead of starting a new one\n" +
         "  -h, --help  Show this help message\n"
     );
-    if (!level && !jobId) Deno.exit(1);
+    if (!level) Deno.exit(1);
   }
+
+  // -----------------------------------------------------------------------//
+  // Initialise the game engine & tools
+  // -----------------------------------------------------------------------//
 
   const engine = new ChromattisGameEngine(LEVELS);
-
-  if (jobId) {
-    await pollJob(jobId, engine);
-    return;
-  }
-
-  if (!level) {
-    console.error("Error: --level is required when --job-id is not provided.");
-    Deno.exit(1);
-  }
-
   engine.loadLevel(level as number);
-  const newJobId = await submitBackgroundJob();
-  console.log(`Created background job: ${newJobId}`);
 
-  await pollJob(newJobId, engine);
+  const getStateTool = tool({
+    name: "get_state",
+    description: "Return the current game state as JSON.",
+    parameters: z.object({}).strict(),
+    execute: () => engine.state,
+  });
+
+  const tapTileTool = tool({
+    name: "tap_tile",
+    description: "Tap a tile on the board.",
+    parameters: z
+      .object({
+        tileId: z.number().int().describe("ID of tile to tap"),
+      })
+      .strict(),
+    execute: ({ tileId }) => engine.clickTile(tileId),
+  });
+
+  // -----------------------------------------------------------------------//
+  // Build and run the agent
+  // -----------------------------------------------------------------------//
+
+  const agent = new Agent({
+    name: "Chromattis Solver",
+    instructions: buildSystemPrompt(),
+    tools: [getStateTool, tapTileTool],
+    model: "o3",
+  });
+
+  console.log(`Running agent on level ${level}...`);
+  // Enable streaming so we can observe incremental events
+  const stream = await run(agent, "Solve the puzzle.", {
+    reasoning: { effort: "high" },
+    stream: true,
+  } as any);
+
+  // Pipe just the text output to stdout for a clean view of the model reasoning
+  const textStream = stream.toTextStream({ compatibleWithNodeStreams: false });
+  (async () => {
+    for await (const chunk of textStream) {
+      // chunk is string in Deno when compatibleWithNodeStreams false
+      Deno.stdout.writeSync(new TextEncoder().encode(chunk));
+    }
+  })();
+
+  // Also log every raw event for full visibility
+  (async () => {
+    for await (const event of stream) {
+      console.log("\n[event]", event.type, JSON.stringify(event, null, 2));
+    }
+  })();
+
+  // Wait until run is fully completed
+  await stream.completed;
+
+  console.log("\n=== Agent run completed ===\n");
+
+  if (stream.usage) {
+    const { input_tokens, output_tokens, total_tokens } = stream.usage;
+    console.log(
+      `Token usage – input: ${input_tokens}, output: ${output_tokens}, total: ${total_tokens}`
+    );
+  }
 }
-
-main().catch((err) => {
-  console.error(err);
-  Deno.exit(1);
-});
