@@ -1,20 +1,21 @@
-"use client"
+"use client";
 
-import { useEffect } from "react"
-import { useGameStore } from "@/lib/game/store"
-import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
-import { GameBoard } from "@/components/game/game-board"
-import { GameControls } from "@/components/game/game-controls"
-import { VictoryModal } from "@/components/game/victory-modal"
-import { Card, CardContent } from "@/components/ui/card"
+import { useEffect } from "react";
+import { useGameStore } from "@/lib/game/store";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { GameBoard } from "@/components/game/game-board";
+import { GameControls } from "@/components/game/game-controls";
+import { VictoryModal } from "@/components/game/victory-modal";
+import { Card, CardContent } from "@/components/ui/card";
 
 export function ChromattisGame() {
-  const { loadLevel, levelIndex, isWin, nextLevel, prevLevel, undo } = useGameStore()
+  const { loadLevel, levelIndex, isWin, nextLevel, prevLevel, undo } =
+    useGameStore();
 
   useEffect(() => {
     // Load the initial level when the component mounts
-    loadLevel(levelIndex)
-  }, [loadLevel, levelIndex])
+    loadLevel(levelIndex);
+  }, [loadLevel, levelIndex]);
 
   useKeyboardShortcuts({
     "=": nextLevel,
@@ -22,11 +23,13 @@ export function ChromattisGame() {
     ArrowRight: nextLevel,
     ArrowLeft: prevLevel,
     z: undo, // Ctrl+Z is handled by browsers, so we use 'z'
-  })
+  });
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-4xl mx-auto">
-      <h1 className="text-4xl font-bold tracking-tighter text-gray-800 dark:text-gray-200">Chromattis</h1>
+      <h1 className="text-4xl font-bold tracking-tighter text-gray-800 dark:text-gray-200">
+        Chromattis
+      </h1>
       <Card className="w-full max-w-md md:max-w-lg lg:max-w-xl shadow-lg">
         <CardContent className="p-4 md:p-6 flex flex-col gap-4">
           <GameControls />
@@ -63,5 +66,5 @@ export function ChromattisGame() {
         </p>
       </div>
     </div>
-  )
+  );
 }
