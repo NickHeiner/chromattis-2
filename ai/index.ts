@@ -19,7 +19,7 @@ await loadEnv({ export: true });
 
 import { parse } from "@std/flags";
 import { z } from "zod";
-import { Agent, run, tool } from "@openai/agents";
+import { Agent, run, tool, codeInterpreterTool } from "@openai/agents";
 import { ChromattisGameEngine } from "../lib/game/engine.ts";
 import { LEVELS } from "../lib/game/levels.ts";
 import logger, { LogMetadata } from "npm:nth-log";
@@ -46,7 +46,7 @@ function buildSystemPrompt(): string {
     You are playing a puzzle game. You have tools available to inspect and mutate the current state. 
     Use the tools to figure out how the puzzle works, then solve it. The puzzle is considered solved when all tiles are the same number.
 
-    Your goal is to solve it in as few moves as possible.
+    Your goal is to solve it in as few moves as possible. Keep going until you solve it.
     
     Throughout, explain your reasoning to the user`.trim();
 }
@@ -122,7 +122,7 @@ async function main() {
   const agent = new Agent({
     name: "Chromattis Solver",
     instructions: buildSystemPrompt(),
-    tools: [getStateTool, tapTileTool],
+    tools: [getStateTool, tapTileTool, codeInterpreterTool()],
     model: "o3",
     modelSettings: {
       // This doesn't seem to actually work
