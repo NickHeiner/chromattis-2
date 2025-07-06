@@ -230,5 +230,5 @@ async function main() {
       log.info(`📝 RunMessageOutputItem event:`, event);
     }
   }
-  log.info("✅ Agent run completed");
+  log.info("✅ Agent run completed", {totalMoves: engine.countMoves()});
 }

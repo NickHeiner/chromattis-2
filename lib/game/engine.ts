@@ -97,4 +97,8 @@ export class ChromattisGameEngine {
   public setBestScores(scores: Record<number, number | null>): void {
     this.state.bestScores = scores
   }
+
+  public countMoves(): number {
+    return this.history.length
+  }
 }
