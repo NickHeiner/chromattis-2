@@ -100,36 +100,24 @@ async function main() {
 
   console.log(`Running agent on level ${level}...`);
   // Enable streaming so we can observe incremental events
-  const stream = await run(agent, "Solve the puzzle.", {
+  const result = await run(agent, "Solve the puzzle.", {
     reasoning: { effort: "high" },
     stream: true,
   } as any);
 
-  // Pipe just the text output to stdout for a clean view of the model reasoning
-  const textStream = stream.toTextStream({ compatibleWithNodeStreams: false });
-  (async () => {
-    for await (const chunk of textStream) {
-      // chunk is string in Deno when compatibleWithNodeStreams false
-      Deno.stdout.writeSync(new TextEncoder().encode(chunk));
+  for await (const event of result) {
+    // these are the raw events from the model
+    if (event.type === 'raw_model_stream_event') {
+      console.log(`${event.type} %o`, event.data);
     }
-  })();
-
-  // Also log every raw event for full visibility
-  (async () => {
-    for await (const event of stream) {
-      console.log("\n[event]", event.type, JSON.stringify(event, null, 2));
+    // agent updated events
+    if (event.type == 'agent_updated_stream_event') {
+      console.log(`${event.type} %s`, event.agent.name);
     }
-  })();
-
-  // Wait until run is fully completed
-  await stream.completed;
-
-  console.log("\n=== Agent run completed ===\n");
-
-  if (stream.usage) {
-    const { input_tokens, output_tokens, total_tokens } = stream.usage;
-    console.log(
-      `Token usage – input: ${input_tokens}, output: ${output_tokens}, total: ${total_tokens}`,
-    );
+    // Agent SDK specific events
+    if (event.type === 'run_item_stream_event') {
+      console.log(`${event.type} %o`, event.item);
+    }
   }
+  console.log("\n=== Agent run completed ===\n");
 }
