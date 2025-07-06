@@ -22,7 +22,7 @@ import { z } from "zod";
 import { Agent, run, tool } from "@openai/agents";
 import { ChromattisGameEngine } from "../lib/game/engine.ts";
 import { LEVELS } from "../lib/game/levels.ts";
-import logger, {LogMetadata} from "npm:nth-log";
+import logger, { LogMetadata } from "npm:nth-log";
 
 //--------------------------------------------------------------------------//
 // Logger setup
@@ -45,7 +45,9 @@ function buildSystemPrompt(): string {
     You are playing a puzzle game. You have tools available to inspect and mutate the current state. 
     Use the tools to figure out how the puzzle works, then solve it. The puzzle is considered solved when all tiles are the same number.
 
-    Your goal is to solve it in as few moves as possible.`.trim();
+    Your goal is to solve it in as few moves as possible.
+    
+    Throughout, explain your reasoning to the user`.trim();
 }
 
 //--------------------------------------------------------------------------//
@@ -123,6 +125,19 @@ async function main() {
     // Log raw events at trace level
     if (event.type === "raw_model_stream_event") {
       log.trace(`${event.type} %o`, event.data);
+
+      // Also capture specific event types at info level
+      if (
+        event.data?.type === "response.output_item.added" &&
+        event.data?.item?.type === "reasoning"
+      ) {
+        log.info(`🤔 Model started reasoning...`);
+      }
+
+      if (event.type === "output_text_delta" && event.delta) {
+        // These are text fragments - we log them at trace level
+        log.trace(`Text delta: ${event.delta}`);
+      }
     }
     // agent updated events
     if (event.type == "agent_updated_stream_event") {
@@ -131,6 +146,27 @@ async function main() {
     // Agent SDK specific events
     if (event.type === "run_item_stream_event") {
       log.trace(`${event.type} %o`, event.item);
+
+      // Log the event type name for debugging
+      const itemType = event.item?.type;
+      const itemConstructor = event.item?.constructor?.name;
+      if (itemType) {
+        log.trace(
+          `Processing item type: ${itemType} (${
+            itemConstructor || "unknown constructor"
+          })`,
+        );
+      }
+
+      // Log reasoning items at info level
+      if (event.item?.type === "reasoning_item") {
+        const reasoningContent = event.item.rawItem?.content;
+        if (reasoningContent && reasoningContent.length > 0) {
+          log.info(`🤔 Model reasoning:`, reasoningContent);
+        } else {
+          log.info(`🤔 Model is thinking...`);
+        }
+      }
 
       // Log meaningful events at info level
       if (event.item?.type === "tool_call_item") {
@@ -167,11 +203,32 @@ async function main() {
       }
 
       if (event.item?.type === "message_output_item") {
+        // Log the full structure at trace level
+        log.trace(`RunMessageOutputItem details:`, {
+          id: event.item.rawItem?.id,
+          role: event.item.rawItem?.role,
+          contentLength: event.item.rawItem?.content?.length,
+        });
+
         const text = event.item.rawItem?.content?.[0]?.text;
         if (text) {
-          log.info(`💬 Agent: ${text}`);
+          // For long messages, show a preview
+          const preview = text.length > 200
+            ? text.substring(0, 200) + "..."
+            : text;
+          log.info(`💬 Agent message (${text.length} chars): ${preview}`);
+
+          // Log the full message at debug level
+          if (text.length > 200) {
+            log.debug(`Full agent message:\n${text}`);
+          }
         }
       }
+    }
+
+    // Also check for direct RunMessageOutputItem events
+    if (event.type === "RunMessageOutputItem") {
+      log.info(`📝 RunMessageOutputItem event:`, event);
     }
   }
   log.info("✅ Agent run completed");
