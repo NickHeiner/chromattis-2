@@ -62,7 +62,7 @@ if (import.meta.main) {
 async function main() {
   const flags = parse(Deno.args, {
     string: ["level"],
-    boolean: ["help"],
+    boolean: ["help", "show-target-tiles"],
     alias: { h: "help" },
   });
 
@@ -78,7 +78,11 @@ async function main() {
     if (!level) Deno.exit(1);
   }
 
-  function stateWithoutTargetTiles(state: GameState) {
+  function getStateToShowModel(state: GameState) {
+    if (flags.showTargetTiles) {
+      return state;
+    }
+
     return state.board.map(({ 
       // deno-lint-ignore no-unused-vars
       targetTiles, 
@@ -97,7 +101,7 @@ async function main() {
     name: "get_state",
     description: "Return the current game state as JSON.",
     parameters: z.object({}).strict(),
-    execute: () => stateWithoutTargetTiles(engine.state),
+    execute: () => getStateToShowModel(engine.state),
   });
 
   const tapTileTool = tool({
@@ -108,7 +112,7 @@ async function main() {
         tileId: z.number().int().describe("ID of tile to tap"),
       })
       .strict(),
-    execute: ({ tileId }) => stateWithoutTargetTiles(engine.clickTile(tileId)),
+    execute: ({ tileId }) => getStateToShowModel(engine.clickTile(tileId)),
   });
 
   // -----------------------------------------------------------------------//
