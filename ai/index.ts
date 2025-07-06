@@ -105,6 +105,7 @@ async function main() {
     stream: true,
   } as any);
 
+  // @ts-expect-error seems like the OAI types are wrong
   for await (const event of result) {
     // these are the raw events from the model
     if (event.type === 'raw_model_stream_event') {
