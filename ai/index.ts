@@ -22,7 +22,7 @@ import { z } from "zod";
 import { Agent, run, tool } from "@openai/agents";
 import { ChromattisGameEngine } from "../lib/game/engine.ts";
 import { LEVELS } from "../lib/game/levels.ts";
-import logger from "npm:nth-log";
+import logger, {LogMetadata} from "npm:nth-log";
 
 //--------------------------------------------------------------------------//
 // Logger setup
@@ -33,6 +33,7 @@ import logger from "npm:nth-log";
 
 const log = logger({
   name: "chromattis-solver",
+  level: Deno.env.get("loglevel") as LogMetadata["level"] || "info",
 });
 
 //--------------------------------------------------------------------------//
