@@ -1,9 +1,28 @@
 // deno-lint-ignore-file no-explicit-any
+// @ts-nocheck
 // Load environment variables from a local .env file if present
 // @ts-ignore – Remote Deno std import not resolvable by tsc without plugin
 import { load as loadEnv } from "https://deno.land/std@0.224.0/dotenv/mod.ts";
 
-await loadEnv(); // Populate Deno.env with variables from .env if available
+// Ensure variables from a local .env file are available via Deno.env
+await loadEnv({ export: true });
+
+// ---------------------------------------------------------------------------
+// Environment – retrieve once and fail fast if required variables are missing
+// ---------------------------------------------------------------------------
+
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+
+if (!OPENAI_API_KEY) {
+  throw new Error(
+    "Missing OPENAI_API_KEY environment variable. Add it to your .env file or export it in your shell."
+  );
+}
+
+// Helper to build the OpenAI client with the validated API key
+function createOpenAIClient() {
+  return new OpenAI({ apiKey: OPENAI_API_KEY });
+}
 
 // @ts-ignore – Deno npm specifier
 import OpenAI from "npm:openai";
@@ -33,6 +52,7 @@ const TOOL_DEFINITIONS = [
       type: "object",
       properties: {},
       required: [],
+      additionalProperties: false,
     },
     strict: true,
   },
@@ -46,6 +66,7 @@ const TOOL_DEFINITIONS = [
         tileId: { type: "integer", description: "ID of tile to tap" },
       },
       required: ["tileId"],
+      additionalProperties: false,
     },
     strict: true,
   },
@@ -56,11 +77,10 @@ const TOOL_DEFINITIONS = [
  * Returns the newly-created job id.
  */
 async function submitBackgroundJob(): Promise<string> {
-  const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY") ?? "" });
+  const openai = createOpenAIClient();
 
   const response = await openai.responses.create({
     model: "o3",
-    mode: "background",
     instructions: buildSystemPrompt(),
     input: "Solve the puzzle.",
     tools: [
@@ -84,7 +104,7 @@ async function pollJob(
   jobId: string,
   engine: ChromattisGameEngine
 ): Promise<void> {
-  const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY") ?? "" });
+  const openai = createOpenAIClient();
 
   Deno.stdout.writeSync(new TextEncoder().encode(`Polling job ${jobId}`));
 
@@ -190,8 +210,8 @@ async function main() {
     Deno.exit(1);
   }
 
-  engine.loadLevel(level);
-  const newJobId = await submitBackgroundJob(level);
+  engine.loadLevel(level as number);
+  const newJobId = await submitBackgroundJob();
   console.log(`Created background job: ${newJobId}`);
 
   await pollJob(newJobId, engine);
