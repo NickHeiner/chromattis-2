@@ -1,6 +1,9 @@
+import "openai/shims/2024-05-01-beta";
 import OpenAI from "openai";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import { ChromattisGameEngine } from "../lib/game/engine";
+import { LEVELS } from "../lib/game/levels";
 
 /**
  * Build the system prompt delivered to the model.
@@ -17,6 +20,33 @@ function buildUserPrompt(level: number | string): string {
   return `Solve Chromattis level ${level}.`;
 }
 
+const TOOL_DEFINITIONS: any[] = [
+  {
+    type: "function",
+    name: "get_state",
+    description: "Return the current Chromattis game state as JSON.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+    strict: true,
+  },
+  {
+    type: "function",
+    name: "tap_tile",
+    description: "Tap a tile on the board to cycle its target tiles.",
+    parameters: {
+      type: "object",
+      properties: {
+        tileId: { type: "integer", description: "ID of tile to tap" },
+      },
+      required: ["tileId"],
+    },
+    strict: true,
+  },
+] as const;
+
 /**
  * Submit a background job to OpenAI that attempts to solve the requested level.
  * Returns the newly-created job id.
@@ -26,7 +56,6 @@ async function submitBackgroundJob(level: number | string): Promise<string> {
 
   const response = await openai.responses.create({
     model: "o3",
-    // @ts-expect-error – "mode" is valid but missing in types
     mode: "background",
     instructions: buildSystemPrompt(level),
     input: buildUserPrompt(level),
@@ -35,9 +64,10 @@ async function submitBackgroundJob(level: number | string): Promise<string> {
         type: "code_interpreter",
         container: { type: "auto" },
       },
+      ...TOOL_DEFINITIONS,
     ],
     reasoning: { effort: "high" },
-  });
+  } as any);
 
   // The SDK returns the job meta when mode === "background" which includes an id
   return (response as any).id as string;
@@ -46,7 +76,10 @@ async function submitBackgroundJob(level: number | string): Promise<string> {
 /**
  * Poll the given job id until it is no longer running, then print the outcome and token usage.
  */
-async function pollJob(jobId: string): Promise<void> {
+async function pollJob(
+  jobId: string,
+  engine: ChromattisGameEngine
+): Promise<void> {
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   process.stdout.write(`Polling job ${jobId}`);
@@ -56,6 +89,39 @@ async function pollJob(jobId: string): Promise<void> {
 
     // heartbeat
     process.stdout.write(".");
+
+    if (job.status === "requires_action") {
+      const action = job.required_action as any;
+      if (action?.type === "submit_tool_outputs") {
+        const toolOutputs = action.tool_calls.map((call: any) => {
+          const { id, name, arguments: args } = call;
+
+          if (name === "get_state") {
+            return { tool_call_id: id, output: JSON.stringify(engine.state) };
+          }
+
+          if (name === "tap_tile") {
+            let parsed: { tileId: number };
+            try {
+              parsed = JSON.parse(args);
+            } catch {
+              parsed = { tileId: NaN } as any;
+            }
+            const newState = engine.clickTile(parsed.tileId);
+            return { tool_call_id: id, output: JSON.stringify(newState) };
+          }
+
+          // Fallback for unknown tools
+          return { tool_call_id: id, output: "Unknown tool call" };
+        });
+
+        // @ts-expect-error – method not yet in type defs
+        await openai.responses.submit_tool_outputs(jobId, {
+          tool_outputs: toolOutputs,
+        });
+        continue; // Immediately continue polling after submitting outputs
+      }
+    }
 
     if (job.status !== "in_progress" && job.status !== "queued") {
       console.log("\n\n=== Job finished ===");
@@ -107,16 +173,19 @@ async function main() {
     .help()
     .alias("h", "help").argv;
 
+  const engine = new ChromattisGameEngine(LEVELS);
+
   if (argv.jobId) {
-    await pollJob(argv.jobId as string);
+    await pollJob(argv.jobId as string, engine);
     return;
   }
 
   const level = argv.level as number;
+  engine.loadLevel(level);
   const jobId = await submitBackgroundJob(level);
   console.log(`Created background job: ${jobId}`);
 
-  await pollJob(jobId);
+  await pollJob(jobId, engine);
 }
 
 main().catch((err) => {
