@@ -23,6 +23,7 @@ import { Agent, run, tool } from "@openai/agents";
 import { ChromattisGameEngine } from "../lib/game/engine.ts";
 import { LEVELS } from "../lib/game/levels.ts";
 import logger, { LogMetadata } from "npm:nth-log";
+import { GameState } from "../lib/game/types.ts";
 
 //--------------------------------------------------------------------------//
 // Logger setup
@@ -77,6 +78,14 @@ async function main() {
     if (!level) Deno.exit(1);
   }
 
+  function stateWithoutTargetTiles(state: GameState) {
+    return state.board.map(({ 
+      // deno-lint-ignore no-unused-vars
+      targetTiles, 
+      ...rest 
+    }) => rest);
+  }
+
   // -----------------------------------------------------------------------//
   // Initialise the game engine & tools
   // -----------------------------------------------------------------------//
@@ -88,7 +97,7 @@ async function main() {
     name: "get_state",
     description: "Return the current game state as JSON.",
     parameters: z.object({}).strict(),
-    execute: () => engine.state,
+    execute: () => stateWithoutTargetTiles(engine.state),
   });
 
   const tapTileTool = tool({
@@ -99,7 +108,7 @@ async function main() {
         tileId: z.number().int().describe("ID of tile to tap"),
       })
       .strict(),
-    execute: ({ tileId }) => engine.clickTile(tileId),
+    execute: ({ tileId }) => stateWithoutTargetTiles(engine.clickTile(tileId)),
   });
 
   // -----------------------------------------------------------------------//
@@ -111,6 +120,14 @@ async function main() {
     instructions: buildSystemPrompt(),
     tools: [getStateTool, tapTileTool],
     model: "o3",
+    modelSettings: {
+      // This doesn't seem to actually work
+      // @ts-expect-error looks like this isn't in the types yet https://chatgpt.com/c/686acd7d-876c-8011-adae-163f2d01b005
+      reasoning: {
+        effort: "high",
+        summary: "response"
+      }
+    }
   });
 
   log.info(`Running agent on level ${level}...`);
@@ -118,6 +135,7 @@ async function main() {
   const result = await run(agent, "Solve the puzzle.", {
     reasoning: { effort: "high" },
     stream: true,
+    maxTurns: 1_000
   } as any);
 
   // @ts-expect-error seems like the OAI types are wrong
@@ -179,23 +197,9 @@ async function main() {
         const toolName = event.item.rawItem?.name;
         const output = event.item.output;
         if (toolName === "get_state" && output) {
-          log.info(`📊 Game state:`, {
-            tiles: output.board.map((tile: any) => ({
-              id: tile.id,
-              value: tile.color,
-            })),
-            moves: output.moves,
-            isWin: output.isWin,
-          });
+          log.info(`📊 Game state:`, output);
         } else if (toolName === "tap_tile" && output) {
-          log.info(`👆 Tapped tile, new state:`, {
-            tiles: output.board.map((tile: any) => ({
-              id: tile.id,
-              value: tile.color,
-            })),
-            moves: output.moves,
-            isWin: output.isWin,
-          });
+          log.info(`👆 Tapped tile, new state:`, output);
           if (output.isWin) {
             log.info(`🎉 Puzzle solved in ${output.moves} moves!`);
           }
@@ -212,16 +216,7 @@ async function main() {
 
         const text = event.item.rawItem?.content?.[0]?.text;
         if (text) {
-          // For long messages, show a preview
-          const preview = text.length > 200
-            ? text.substring(0, 200) + "..."
-            : text;
-          log.info(`💬 Agent message (${text.length} chars): ${preview}`);
-
-          // Log the full message at debug level
-          if (text.length > 200) {
-            log.debug(`Full agent message:\n${text}`);
-          }
+          log.info(`💬 Agent message`, { text });
         }
       }
     }
