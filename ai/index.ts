@@ -22,6 +22,18 @@ import { z } from "zod";
 import { Agent, run, tool } from "@openai/agents";
 import { ChromattisGameEngine } from "../lib/game/engine.ts";
 import { LEVELS } from "../lib/game/levels.ts";
+import logger from "npm:nth-log";
+
+//--------------------------------------------------------------------------//
+// Logger setup
+//--------------------------------------------------------------------------//
+// Use trace level to see raw OpenAI events (set LOG_LEVEL=trace)
+// Use info level for clean, human-readable progress updates (default)
+// Note: nth-log wraps Bunyan, so it uses standard Bunyan log levels
+
+const log = logger({
+  name: "chromattis-solver",
+});
 
 //--------------------------------------------------------------------------//
 // Helpers
@@ -98,7 +110,7 @@ async function main() {
     model: "o3",
   });
 
-  console.log(`Running agent on level ${level}...`);
+  log.info(`Running agent on level ${level}...`);
   // Enable streaming so we can observe incremental events
   const result = await run(agent, "Solve the puzzle.", {
     reasoning: { effort: "high" },
@@ -107,18 +119,59 @@ async function main() {
 
   // @ts-expect-error seems like the OAI types are wrong
   for await (const event of result) {
-    // these are the raw events from the model
-    if (event.type === 'raw_model_stream_event') {
-      console.log(`${event.type} %o`, event.data);
+    // Log raw events at trace level
+    if (event.type === "raw_model_stream_event") {
+      log.trace(`${event.type} %o`, event.data);
     }
     // agent updated events
-    if (event.type == 'agent_updated_stream_event') {
-      console.log(`${event.type} %s`, event.agent.name);
+    if (event.type == "agent_updated_stream_event") {
+      log.trace(`${event.type} %s`, event.agent.name);
     }
     // Agent SDK specific events
-    if (event.type === 'run_item_stream_event') {
-      console.log(`${event.type} %o`, event.item);
+    if (event.type === "run_item_stream_event") {
+      log.trace(`${event.type} %o`, event.item);
+
+      // Log meaningful events at info level
+      if (event.item?.type === "tool_call_item") {
+        const toolName = event.item.rawItem?.name;
+        const args = event.item.rawItem?.arguments;
+        log.info(`🔧 Tool call: ${toolName}`, args ? JSON.parse(args) : {});
+      }
+
+      if (event.item?.type === "tool_call_output_item") {
+        const toolName = event.item.rawItem?.name;
+        const output = event.item.output;
+        if (toolName === "get_state" && output) {
+          log.info(`📊 Game state:`, {
+            tiles: output.board.map((tile: any) => ({
+              id: tile.id,
+              value: tile.color,
+            })),
+            moves: output.moves,
+            isWin: output.isWin,
+          });
+        } else if (toolName === "tap_tile" && output) {
+          log.info(`👆 Tapped tile, new state:`, {
+            tiles: output.board.map((tile: any) => ({
+              id: tile.id,
+              value: tile.color,
+            })),
+            moves: output.moves,
+            isWin: output.isWin,
+          });
+          if (output.isWin) {
+            log.info(`🎉 Puzzle solved in ${output.moves} moves!`);
+          }
+        }
+      }
+
+      if (event.item?.type === "message_output_item") {
+        const text = event.item.rawItem?.content?.[0]?.text;
+        if (text) {
+          log.info(`💬 Agent: ${text}`);
+        }
+      }
     }
   }
-  console.log("\n=== Agent run completed ===\n");
+  log.info("✅ Agent run completed");
 }

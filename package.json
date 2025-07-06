@@ -54,6 +54,7 @@
     "lucide-react": "^0.454.0",
     "next": "15.2.4",
     "next-themes": "^0.4.4",
+    "nth-log": "^3.0.1",
     "openai": "^5.8.2",
     "react": "^19",
     "react-day-picker": "8.10.1",
