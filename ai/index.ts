@@ -1,9 +1,16 @@
-import "dotenv/config"; // Load environment variables from .env
-import OpenAI from "openai";
-import yargs from "yargs";
-import { hideBin } from "yargs/helpers";
-import { ChromattisGameEngine } from "../lib/game/engine";
-import { LEVELS } from "../lib/game/levels";
+// deno-lint-ignore-file no-explicit-any
+// Load environment variables from a local .env file if present
+// @ts-ignore – Remote Deno std import not resolvable by tsc without plugin
+import { load as loadEnv } from "https://deno.land/std@0.224.0/dotenv/mod.ts";
+
+await loadEnv(); // Populate Deno.env with variables from .env if available
+
+// @ts-ignore – Deno npm specifier
+import OpenAI from "npm:openai";
+// @ts-ignore – Remote Deno std import not resolvable by tsc without plugin
+import { parse } from "https://deno.land/std@0.224.0/flags/mod.ts";
+import { ChromattisGameEngine } from "../lib/game/engine.ts";
+import { LEVELS } from "../lib/game/levels.ts";
 
 /**
  * Build the system prompt delivered to the model.
@@ -48,8 +55,8 @@ const TOOL_DEFINITIONS = [
  * Submit a background job to OpenAI that attempts to solve the requested level.
  * Returns the newly-created job id.
  */
-async function submitBackgroundJob(level: number | string): Promise<string> {
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+async function submitBackgroundJob(): Promise<string> {
+  const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY") ?? "" });
 
   const response = await openai.responses.create({
     model: "o3",
@@ -77,15 +84,15 @@ async function pollJob(
   jobId: string,
   engine: ChromattisGameEngine
 ): Promise<void> {
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY") ?? "" });
 
-  process.stdout.write(`Polling job ${jobId}`);
+  Deno.stdout.writeSync(new TextEncoder().encode(`Polling job ${jobId}`));
 
   while (true) {
     const job: any = await openai.responses.retrieve(jobId);
 
     // heartbeat
-    process.stdout.write(".");
+    Deno.stdout.writeSync(new TextEncoder().encode("."));
 
     if (job.status === "requires_action") {
       const action = job.required_action as any;
@@ -112,8 +119,8 @@ async function pollJob(
           return { tool_call_id: id, output: "Unknown tool call" };
         });
 
-        // @ts-expect-error – method not yet in type defs
-        await openai.responses.submit_tool_outputs(jobId, {
+        // Method not yet in type defs – using as any
+        await (openai.responses as any).submit_tool_outputs(jobId, {
           tool_outputs: toolOutputs,
         });
         continue; // Immediately continue polling after submitting outputs
@@ -151,41 +158,46 @@ async function pollJob(
 }
 
 async function main() {
-  const argv = await yargs(hideBin(process.argv))
-    .option("level", {
-      type: "number",
-      describe: "Chromattis level number to solve",
-    })
-    .option("job-id", {
-      type: "string",
-      describe:
-        "Listen to an existing background job instead of starting a new one",
-    })
-    .check((args: { level?: number; jobId?: string }) => {
-      if (!args.level && !args.jobId) {
-        throw new Error("You must provide either --level or --job-id.");
-      }
-      return true;
-    })
-    .help()
-    .alias("h", "help").argv;
+  const flags = parse(Deno.args, {
+    string: ["job-id"],
+    boolean: ["help"],
+    alias: { h: "help" },
+  });
+
+  const level = flags.level ? Number(flags.level) : undefined;
+  const jobId = flags["job-id"] as string | undefined;
+
+  if (flags.help || (!level && !jobId)) {
+    console.log(
+      `Usage: deno run -A ai/index.ts [--level <number>] [--job-id <id>]\n\n` +
+        "Options:\n" +
+        "  --level     Chromattis level number to solve\n" +
+        "  --job-id    Listen to an existing background job instead of starting a new one\n" +
+        "  -h, --help  Show this help message\n"
+    );
+    if (!level && !jobId) Deno.exit(1);
+  }
 
   const engine = new ChromattisGameEngine(LEVELS);
 
-  if (argv.jobId) {
-    await pollJob(argv.jobId as string, engine);
+  if (jobId) {
+    await pollJob(jobId, engine);
     return;
   }
 
-  const level = argv.level as number;
-  engine.loadLevel(level);
-  const jobId = await submitBackgroundJob(level);
-  console.log(`Created background job: ${jobId}`);
+  if (!level) {
+    console.error("Error: --level is required when --job-id is not provided.");
+    Deno.exit(1);
+  }
 
-  await pollJob(jobId, engine);
+  engine.loadLevel(level);
+  const newJobId = await submitBackgroundJob(level);
+  console.log(`Created background job: ${newJobId}`);
+
+  await pollJob(newJobId, engine);
 }
 
 main().catch((err) => {
   console.error(err);
-  process.exit(1);
+  Deno.exit(1);
 });

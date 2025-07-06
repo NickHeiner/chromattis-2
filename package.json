@@ -7,8 +7,7 @@
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start",
-    "solve:level1": "pnpm run build:ai && node dist/ai/ai/index.js --level 1",
-    "build:ai": "tsc ai/index.ts --outDir dist/ai --module commonjs --target es2020 --esModuleInterop --resolveJsonModule"
+    "solve": "deno run -A ai/index.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -76,6 +75,7 @@
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",
     "ts-node": "^10",
-    "typescript": "^5"
+    "typescript": "^5",
+    "denonext": "^1.0.0"
   }
 }
